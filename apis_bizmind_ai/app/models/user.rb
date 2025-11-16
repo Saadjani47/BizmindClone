@@ -5,6 +5,7 @@ class User < ApplicationRecord
     :jwt_authenticatable, jwt_revocation_strategy: JwtDenylist
 
   has_one :user_preference, dependent: :destroy
+  has_one :user_profile, dependent: :destroy
 
   # This method finds an existing user by email or creates a new one
   def self.from_omniauth(auth_hash)

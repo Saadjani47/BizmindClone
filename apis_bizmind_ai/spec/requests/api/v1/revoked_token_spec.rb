@@ -5,8 +5,8 @@ RSpec.describe 'Revoked JWTs', type: :request do
   let(:headers) { auth_headers_for(user) }
 
   it 'blocks access to protected endpoints after token is revoked' do
-    # initial access with a valid token should succeed
-    get '/api/v1/user_preference', headers: headers
+  # initial access with a valid token should succeed (use a protected endpoint that returns 200 even when empty)
+  get '/api/v1/user_profile', headers: headers
     expect(response.status).to be_between(200, 299).inclusive
 
     # revoke the token via logout
@@ -14,7 +14,7 @@ RSpec.describe 'Revoked JWTs', type: :request do
     expect(response).to have_http_status(:ok)
 
     # same token should now be rejected
-    get '/api/v1/user_preference', headers: headers
+  get '/api/v1/user_profile', headers: headers
     expect(response).to have_http_status(:unauthorized)
   end
 end
