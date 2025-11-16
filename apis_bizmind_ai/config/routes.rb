@@ -27,10 +27,10 @@ Rails.application.routes.draw do
       # == Protected Resource Route ==
       # Creates GET, PUT, and PATCH for /api/v1/user_preference
   resource :user_preference, only: [:show, :create, :update, :destroy], controller: 'user_preferences'
+  resource :user_profile, only: [:show, :create, :update], controller: 'user_profiles'
       
     end
   end
 
-  # Defines the root path route ("/")
   # root "articles#index"
 end

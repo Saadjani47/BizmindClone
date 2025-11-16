@@ -24,12 +24,16 @@ end
 # In test environment, provide a lightweight authenticate_user! implementation for API controllers
 # that reads the Authorization Bearer token, decodes it using the devise_jwt secret, and sets current_user.
 begin
-  if defined?(Api::V1::UserPreferencesController)
-    Api::V1::UserPreferencesController.class_eval do
+  controllers_to_patch = []
+  controllers_to_patch << Api::V1::UserPreferencesController if defined?(Api::V1::UserPreferencesController)
+  controllers_to_patch << Api::V1::UserProfilesController if defined?(Api::V1::UserProfilesController)
+
+  controllers_to_patch.each do |controller_klass|
+    controller_klass.class_eval do
       def authenticate_user!
         header = request.headers['Authorization'] || request.headers['HTTP_AUTHORIZATION']
         if header&.start_with?('Bearer ')
-          token = header.split(' ',2).last
+          token = header.split(' ', 2).last
           secret = Rails.application.credentials.devise_jwt_secret_key || Rails.application.credentials.secret_key_base || Rails.application.secret_key_base
           payload = ::JWT.decode(token, secret, true, { algorithm: 'HS256' })[0]
           # Check denylist in test shim as production behavior should also deny revoked tokens

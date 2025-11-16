@@ -7,6 +7,7 @@ This document explains how the backend Rails API (located at the repository root
 - Project overview
 - Key gems and why they're used
 - Database & migrations (what each migration does)
+ - Database & migrations (what each migration does)
 - Models (fields, relations, responsibilities)
 - Authentication: Devise + Devise-JWT + custom handling
   - JWT payload format used in this app
@@ -77,6 +78,19 @@ Files (in `db/migrate`) and summary:
   - Adds an `exp` (datetime) column to `jwt_denylists` with an index.
   - Storing `exp` lets the app optionally garbage-collect old denylist entries after expiry to keep the table small.
 
+- `20251116082549_create_user_profiles.rb`
+  - Creates `user_profiles` table with a 1:1 relation to `users` and fields for a professional profile:
+    - `first_name` (string, required), `last_name` (string), `full_name` (string, required)
+    - `headline`, `job_title`, `company`, `location`, `website`, `linkedin_url`
+    - `summary` (text)
+    - `skills` (jsonb, default: []) for an array of skills
+  - Adds unique index on `user_id` (enforces at most one profile per user).
+  - Adds index on `full_name` and a GIN index on `skills` for efficient lookups.
+
+- `20251116082706_create_active_storage_tables.active_storage.rb`
+  - Adds standard Active Storage tables (`active_storage_blobs`, `active_storage_attachments`, `active_storage_variant_records`).
+  - Required for file attachments such as profile images.
+
 Why these exist and how they work together:
 - `devise-jwt` issues tokens (JWTs) on login/signup. Each token includes a `jti` (unique id) so the system can identify individual tokens.
 - To revoke tokens (logout), the app writes the token `jti` to `jwt_denylists`. The middleware or custom logic checks if a token `jti` exists in that table and refuses requests if it does.
@@ -88,6 +102,8 @@ Why these exist and how they work together:
 - Included modules via Devise: `:database_authenticatable, :registerable, :recoverable, :validatable, :jwt_authenticatable`
   - `jwt_revocation_strategy: JwtDenylist` — instructs Devise-JWT to use the `JwtDenylist` model to check and record revoked tokens.
 - Associations: `has_one :user_preference, dependent: :destroy`
+ - Associations: `has_one :user_preference, dependent: :destroy`
+ - Associations: `has_one :user_profile, dependent: :destroy`
 - Class method `self.from_omniauth(auth_hash)`
   - Finds or creates a user from auth hash (used by the Google callback controller).
   - Creates a user with a random password if none exists (suitable for OAuth-only signin).
@@ -103,6 +119,15 @@ Notes:
 - Fields `theme`, `language`, and `user_id`.
 - `belongs_to :user`.
 - Simple storage object surfaced under `/api/v1/user_preference` routes.
+
+### `UserProfile` (app/models/user_profile.rb)
+- Belongs to `User` (1:1) and validates presence of `first_name` and `full_name`; enforces uniqueness of `user_id` (one profile per user).
+- Stores `skills` as a jsonb array. Provides optional professional metadata fields like `headline`, `job_title`, `company`, etc.
+- Attachment: `has_one_attached :profile_image` (via Active Storage) for an avatar/photo.
+- URL validation for `website` and `linkedin_url`.
+- Convenience methods:
+  - `profile_image_url` exposes a fully qualified URL for the attached image (uses `rails_blob_url`).
+  - `as_json` includes `profile_image_url` in serialized output.
 
 ## Authentication: Devise + Devise-JWT + custom handling
 
@@ -177,6 +202,13 @@ Key controllers and responsibilities:
 - `Api::V1::UserPreferencesController` (routes map `resource :user_preference` to controller `user_preferences`):
   - Standard CRUD actions for a single resource per user (show/create/update/destroy). Expected to be protected with some authentication (`JwtAuthenticatable` or Devise helpers depending on implementation).
 
+- `Api::V1::UserProfilesController`:
+  - Endpoints for managing the authenticated user's professional profile at `/api/v1/user_profile`.
+  - Actions: `show`, `create`, and `update` (1:1 profile per user, no `destroy`).
+  - Accepts optional `profile_image` file upload (Active Storage); when provided, the image is attached/updated.
+  - Normalizes incoming fields (`first_name`, `last_name`, `full_name`, `headline`, `job_title`, `company`, `location`), cleans up `summary`, basic URL normalization for `website` and `linkedin_url`, and titleizes/uniqs `skills`.
+  - Requires authentication via `before_action :authenticate_user!` (from `JwtAuthenticatable`).
+
 Custom concerns/middlewares:
 - `JwtAuthenticatable` (concern) provides `authenticate_user!` and `current_user` for controllers that need a simple token-based auth flow without Warden middleware.
 
@@ -192,6 +224,7 @@ Key route definitions (in `config/routes.rb`):
 - POST `/api/v1/auth/google` -> `omniauth_callbacks#google` (expects a Google access token and returns our JWT)
 
 - Resource: `resource :user_preference` mapped to `Api::V1::UserPreferencesController` with `show, create, update, destroy`.
+ - Resource: `resource :user_profile` mapped to `Api::V1::UserProfilesController` with `show, create, update`.
 
 Everything is namespaced under `api/v1`, so controllers live at `app/controllers/api/v1/*`.
 
@@ -209,6 +242,12 @@ Important notes:
 ### `config/initializers/cors.rb`
 - Uses `Rack::Cors` to allow frontend origins (localhost:3000, 127.0.0.1:3000, 5173) to call the API and exposes the `Authorization` header (so the frontend can read the header if the token is set in it by server responses).
 - Allows credentials; be careful with `credentials: true` as CORS combined with cookies requires matching server/frontend origins and secure settings in production.
+
+### Active Storage configuration
+- `config/environments/development.rb` sets `config.active_storage.service = :local`.
+- `config/storage.yml` defines `local` and `test` Disk services. For production, configure S3/GCS/Azure and set credentials.
+- URL generation: `UserProfile#profile_image_url` uses `rails_blob_url`, which needs default URL options set. In development, this repo sets:
+  - `Rails.application.routes.default_url_options[:host] = "localhost"` and `[:port] = 3000` in `development.rb`.
 
 ## Environments (development.rb highlights)
 
@@ -251,6 +290,26 @@ These are standard Rails dev settings, helpful for Devise and mailer behavior lo
 - GET/POST/PUT/DELETE `/api/v1/user_preference`
 - Behavior: Show/create/update/destroy user preference for the current authenticated user. Controllers should use token-based auth to identify the user.
 
+7) User profile
+- GET `/api/v1/user_profile`
+  - Returns the current user's profile JSON (or `null` if not created yet). Includes `profile_image_url` when an image is attached.
+- POST `/api/v1/user_profile`
+  - Creates the profile for the current user. Accepts JSON or multipart form data.
+  - Body (JSON example):
+    `{ "first_name": "Jane", "last_name": "Doe", "headline": "Senior Engineer", "skills": ["ruby", "rails"] }`
+  - Multipart example (with image): set `Content-Type: multipart/form-data` and include `profile_image` file field.
+- PUT/PATCH `/api/v1/user_profile`
+  - Updates fields and optionally replaces `profile_image`.
+  - Any provided `website`/`linkedin_url` will be normalized; `skills` will be deduped/titleized.
+
+Permitted fields:
+`first_name, last_name, full_name, headline, job_title, company, location, website, linkedin_url, summary, profile_image, skills: []`
+
+Notes on uploads:
+- When sending a `profile_image`, use multipart form data. Example with curl (simplified):
+  - Headers: `Authorization: Bearer <token>`
+  - `-F first_name=Jane -F last_name=Doe -F profile_image=@/path/to/photo.jpg`
+
 ## Token handling: lifecycle and checks (detailed)
 
 Issuance:
@@ -274,6 +333,10 @@ Revocation:
 Garbage collection of denylist:
 - As `jwt_denylists` accumulates `jti` rows, add a periodic job (cron or ActiveJob) to delete rows whose `exp` < now. This prevents the table from growing indefinitely.
 
+Maintenance task:
+- A rake task is provided at `lib/tasks/jwt_denylist_gc.rake`:
+  - Run with `bin/rake jwt:gc` to delete expired denylist rows (`exp < now`).
+
 ## Security considerations and recommended improvements
 
 - Secret management: Ensure `Rails.application.credentials.devise_jwt_secret_key` or `ENV['SECRET_KEY_BASE']` is set in production. Do not fall back to hard-coded secrets.
@@ -291,6 +354,7 @@ Garbage collection of denylist:
   - `app/models/user.rb`
   - `app/models/jwt_denylist.rb`
   - `app/models/user_preference.rb`
+  - `app/models/user_profile.rb`
 
 - Controllers
   - `app/controllers/api/v1/users/sessions_controller.rb`
@@ -298,12 +362,23 @@ Garbage collection of denylist:
   - `app/controllers/api/v1/users/passwords_controller.rb`
   - `app/controllers/api/v1/omniauth_callbacks_controller.rb`
   - `app/controllers/concerns/jwt_authenticatable.rb`
+  - `app/controllers/api/v1/user_profiles_controller.rb`
 
 - Routes: `config/routes.rb`
 - Devise config: `config/initializers/devise.rb`
 - CORS config: `config/initializers/cors.rb`
+- Active Storage config: `config/storage.yml`, `config/environments/development.rb`
 - Migrations: `db/migrate/*` (see migration filenames for details)
 - Environment config: `config/environments/development.rb`
+
+## Environment variables
+
+- `FRONTEND_URL` — used for CORS and any cross-origin coordination. Example `.env`:
+  - `FRONTEND_URL=http://localhost:5173`
+
+Ensure secrets for JWT and mailer in production are set via Rails credentials or environment variables:
+- `Rails.application.credentials.devise_jwt_secret_key` or `ENV["SECRET_KEY_BASE"]`
+- `Rails.application.credentials.dig(:mailer, :sender)` or `ENV["DEFAULT_FROM_EMAIL"]`
 
 ## Next steps / small improvements you can apply now
 

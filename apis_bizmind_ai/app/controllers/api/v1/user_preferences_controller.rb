@@ -1,20 +1,23 @@
 class Api::V1::UserPreferencesController < ApplicationController
-  # This is the Devise-JWT magic.
-  # It will check for a valid JWT in the Authorization header.
+
   before_action :authenticate_user!
 
   def create
+    if current_user.user_preference.present?
+      render json: { error: 'Preferences already exist' }, status: :conflict
+      return
+    end
+
     @preference = current_user.build_user_preference(preference_params)
     if @preference.save
       render json: @preference, status: :created
     else
-      render json: { errors: @preference.errors.full_messages }, status: :unprocessable_content
+      render json: { errors: @preference.errors.full_messages }, status: :unprocessable_entity
     end
   end
 
   def show
-    # Ensure a default preference exists for the user and return it.
-    @preference = current_user.user_preference || current_user.create_user_preference(theme: 'light', language: 'en')
+    @preference = current_user.user_preference
     if @preference
       render json: @preference
     else
@@ -24,10 +27,15 @@ class Api::V1::UserPreferencesController < ApplicationController
 
   def update
     @preference = current_user.user_preference
+    unless @preference
+      render json: { error: 'Preferences not found' }, status: :not_found
+      return
+    end
+
     if @preference.update(preference_params)
       render json: @preference
     else
-      render json: { errors: @preference.errors.full_messages }, status: :unprocessable_content
+      render json: { errors: @preference.errors.full_messages }, status: :unprocessable_entity
     end
   end
 
@@ -44,6 +52,28 @@ class Api::V1::UserPreferencesController < ApplicationController
   private
 
   def preference_params
-    params.require(:user_preference).permit(:theme, :language)
+    # Strong parameters only declare which keys are permitted.
+    permitted = params.require(:user_preference).permit(
+      :theme,
+      :language,
+      :industry,
+      :niche,
+      :template_style,
+      :tone_of_voice,
+      :default_output_format,
+      branding: [:primary, :secondary, :logo_url],
+      other: {}
+    )
+
+    # Normalize values so enums accept them (downcase, underscores where needed)
+    permitted[:theme] = permitted[:theme]&.to_s&.downcase
+    permitted[:language] = permitted[:language]&.to_s&.downcase
+    permitted[:industry] = permitted[:industry]&.to_s&.downcase&.tr(' ', '_')
+    permitted[:niche] = permitted[:niche]&.to_s&.downcase&.tr(' ', '_')
+    permitted[:template_style] = permitted[:template_style]&.to_s&.downcase
+    permitted[:tone_of_voice] = permitted[:tone_of_voice]&.to_s&.downcase
+    permitted[:default_output_format] = permitted[:default_output_format]&.to_s&.downcase
+
+    permitted
   end
 end
