@@ -1,5 +1,6 @@
 class Api::V1::UserProfilesController < ApplicationController
   before_action :authenticate_user!
+  before_action :unwrap_profile_params, only: [:create, :update]
   before_action :normalize_profile_params, only: [:create, :update]
 
   # GET /api/v1/user_profile
@@ -26,11 +27,11 @@ class Api::V1::UserProfilesController < ApplicationController
 
   # PATCH/PUT /api/v1/user_profile
   def update
-    profile = current_user.user_profile
+    profile = current_user.user_profile || current_user.build_user_profile
 
     # Apply attribute updates except the file
     attrs = profile_params.except(:profile_image)
-    profile.assign_attributes(attrs)
+  profile.assign_attributes(attrs)
 
     # Attach/replace profile image if provided
     if profile_params[:profile_image].present?
@@ -40,11 +41,25 @@ class Api::V1::UserProfilesController < ApplicationController
     if profile.save
       render json: profile, status: :ok
     else
-      render json: profile.errors, status: :unprocessable_entity
+      render json: { errors: profile.errors.full_messages }, status: :unprocessable_entity
     end
   end
 
   private
+
+  # Accept both payload styles:
+  # 1) Flat JSON: { first_name: "..." }
+  # 2) Nested JSON: { user_profile: { first_name: "..." } }
+  # by merging nested keys into params so existing strong params keep working.
+  def unwrap_profile_params
+    return unless params[:user_profile].is_a?(ActionController::Parameters) || params[:user_profile].is_a?(Hash)
+
+    nested = params[:user_profile]
+    nested.each do |k, v|
+      next if params.key?(k)
+      params[k] = v
+    end
+  end
 
   # Strong params for a more professional profile
   def profile_params
