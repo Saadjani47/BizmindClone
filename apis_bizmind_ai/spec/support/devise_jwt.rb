@@ -27,6 +27,7 @@ begin
   controllers_to_patch = []
   controllers_to_patch << Api::V1::UserPreferencesController if defined?(Api::V1::UserPreferencesController)
   controllers_to_patch << Api::V1::UserProfilesController if defined?(Api::V1::UserProfilesController)
+  controllers_to_patch << Api::V1::ProposalsController if defined?(Api::V1::ProposalsController)
 
   controllers_to_patch.each do |controller_klass|
     controller_klass.class_eval do

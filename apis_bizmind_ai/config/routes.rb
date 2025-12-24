@@ -28,6 +28,12 @@ Rails.application.routes.draw do
       # Creates GET, PUT, and PATCH for /api/v1/user_preference
   resource :user_preference, only: [:show, :create, :update, :destroy], controller: 'user_preferences'
   resource :user_profile, only: [:show, :create, :update], controller: 'user_profiles'
+
+  resources :proposals, only: [:index, :show, :create, :update, :destroy] do
+    post :generate, on: :member
+  end
+
+  resources :generated_proposals, only: [:show, :update]
       
     end
   end

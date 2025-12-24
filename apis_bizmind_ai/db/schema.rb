@@ -10,7 +10,7 @@
 #
 # It's strongly recommended that you check this file into your version control system.
 
-ActiveRecord::Schema[7.1].define(version: 2025_11_16_082706) do
+ActiveRecord::Schema[7.1].define(version: 2025_12_20_120000) do
   # These are extensions that must be enabled in order to support this database
   enable_extension "plpgsql"
 
@@ -42,6 +42,17 @@ ActiveRecord::Schema[7.1].define(version: 2025_11_16_082706) do
     t.index ["blob_id", "variation_digest"], name: "index_active_storage_variant_records_uniqueness", unique: true
   end
 
+  create_table "generated_proposals", force: :cascade do |t|
+    t.bigint "proposal_id", null: false
+    t.jsonb "content_sections", default: {}, null: false
+    t.string "selected_template"
+    t.integer "version", default: 1, null: false
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["content_sections"], name: "index_generated_proposals_on_content_sections", using: :gin
+    t.index ["proposal_id"], name: "index_generated_proposals_on_proposal_id"
+  end
+
   create_table "jwt_denylists", force: :cascade do |t|
     t.string "jti"
     t.datetime "created_at", null: false
@@ -49,6 +60,22 @@ ActiveRecord::Schema[7.1].define(version: 2025_11_16_082706) do
     t.datetime "exp"
     t.index ["exp"], name: "index_jwt_denylists_on_exp"
     t.index ["jti"], name: "index_jwt_denylists_on_jti"
+  end
+
+  create_table "proposals", force: :cascade do |t|
+    t.bigint "user_id", null: false
+    t.string "client_name"
+    t.text "client_requirements"
+    t.text "scope_of_work"
+    t.string "timeline"
+    t.string "pricing"
+    t.string "status", default: "draft", null: false
+    t.bigint "user_preference_id"
+    t.datetime "created_at", null: false
+    t.datetime "updated_at", null: false
+    t.index ["status"], name: "index_proposals_on_status"
+    t.index ["user_id"], name: "index_proposals_on_user_id"
+    t.index ["user_preference_id"], name: "index_proposals_on_user_preference_id"
   end
 
   create_table "user_preferences", force: :cascade do |t|
@@ -103,6 +130,9 @@ ActiveRecord::Schema[7.1].define(version: 2025_11_16_082706) do
 
   add_foreign_key "active_storage_attachments", "active_storage_blobs", column: "blob_id"
   add_foreign_key "active_storage_variant_records", "active_storage_blobs", column: "blob_id"
+  add_foreign_key "generated_proposals", "proposals"
+  add_foreign_key "proposals", "user_preferences"
+  add_foreign_key "proposals", "users"
   add_foreign_key "user_preferences", "users"
   add_foreign_key "user_profiles", "users"
 end

@@ -12,6 +12,11 @@ import SignupPage from './pages/SignupPage.jsx';
 import ForgotPassword from './pages/ForgotPassword.jsx';
 import ResetPassword from './pages/ResetPassword.jsx';
 import Dashboard from './pages/Dashboard.jsx';
+import DashboardLayout from './pages/DashboardLayout.jsx';
+import DashboardHome from './pages/DashboardHome.jsx';
+import ProposalHistory from './pages/ProposalHistory.jsx';
+import ProposalForm from './pages/ProposalForm.jsx';
+import GeneratedProposalView from './pages/GeneratedProposalView.jsx';
 import ProfileView from './pages/ProfileView.jsx';
 import ProfileEdit from './pages/ProfileEdit.jsx';
 import PreferencesView from './pages/PreferencesView.jsx';
@@ -34,15 +39,34 @@ function App() {
           path="/dashboard"
           element={
             <ProtectedRoute>
-              <Dashboard />
+              <DashboardLayout />
             </ProtectedRoute>
           }
-        />
+        >
+          <Route index element={<DashboardHome />} />
+          <Route path="proposals" element={<ProposalHistory />} />
+          <Route path="proposals/new" element={<ProposalForm />} />
+          <Route path="proposals/:id" element={<ProposalForm />} />
+          <Route
+            path="proposals/:id/generated/:generatedId"
+            element={<GeneratedProposalView />}
+          />
+        </Route>
         <Route
           path="/onboarding"
           element={
             <ProtectedRoute>
               <Onboarding />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Keep legacy dashboard page route (if anything links directly) */}
+        <Route
+          path="/dashboard-legacy"
+          element={
+            <ProtectedRoute>
+              <Dashboard />
             </ProtectedRoute>
           }
         />
